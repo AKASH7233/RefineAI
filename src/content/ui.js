@@ -57,6 +57,11 @@ export function createWidget() {
         background: transparent;
       }
 
+      .panel.error-panel{
+        background: rgba(211, 47, 47, 0.1);
+        border: 1px solid rgba(211, 47, 47, 0.3);
+      }
+
       button{
         all: unset;
         cursor: pointer;
@@ -88,6 +93,11 @@ export function createWidget() {
         text-overflow: ellipsis;
         color: rgba(0,0,0,0.72);
         flex-shrink: 1;
+      }
+
+      .msg.error{
+        color: #d32f2f;
+        font-weight: 600;
       }
 
       .key{
@@ -287,9 +297,16 @@ export function setLoading(widgetHost, loading) {
     api.undoBtn.setAttribute("aria-disabled", loading ? "true" : "false");
   }
 
-export function setMessage(widgetHost, text) {
+export function setMessage(widgetHost, text, isError = false) {
     const api = widgetHost._aigf;
     api.msg.textContent = text || "";
+    if (isError) {
+      api.msg.classList.add("error");
+      api.panel.classList.add("error-panel");
+    } else {
+      api.msg.classList.remove("error");
+      api.panel.classList.remove("error-panel");
+    }
   }
 
 export function setUndoVisible(widgetHost, visible) {
