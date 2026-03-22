@@ -111,7 +111,6 @@ function placeCaretAtEnd(contentEditableEl) {
 
 export function setText(el, text) {
     if (!el) {
-      console.log("⚠️ setText: no element");
       return;
     }
 
@@ -143,49 +142,127 @@ export function setText(el, text) {
         // ignore
       }
 
-      console.log("🔄 Clearing contenteditable, setting text:", text.substring(0, 50));
-      
       // Detect if this is WhatsApp Web (has specific data attributes or structure)
       const isWhatsApp = el.getAttribute("data-testid")?.includes("chat") || 
                          el.getAttribute("data-testid")?.includes("message") ||
                          el.closest("[data-testid*='message']") ||
-                         el.closest(".x1hx0egp"); // WhatsApp Web container class
+                         el.closest(".x1hx0egp") ||
+                         el.getAttribute("data-testid") === "input-chatbox-input" ||
+                         el.closest("[data-testid='input-chatbox-input']") ||
+                         el.className?.includes("x1hx0egp") ||
+                         window.location.hostname.includes("web.whatsapp.com");
       
-      console.log("🌐 Detected WhatsApp:", !!isWhatsApp);
+
       
-      // Method 1: Clear all children and set textContent  
+      // Clear all children first
       while (el.firstChild) {
         el.removeChild(el.firstChild);
       }
-      
-      // Method 2: Create a new text node and append
-      const textNode = el.ownerDocument.createTextNode(text);
-      el.appendChild(textNode);
-      
-      console.log("📝 After appendChild:", el.textContent.substring(0, 50));
 
-      // For WhatsApp, try mutating the innerHTML as well
       if (isWhatsApp) {
-        console.log("⚙️  WhatsApp detected - using innerHTML fallback");
-        el.innerHTML = text;
+        // Function to apply text safely
+        const applyText = () => {
+          // Clear all children
+          while (el.firstChild) {
+            el.removeChild(el.firstChild);
+          }
+          
+          // Create text node
+          const textNode = el.ownerDocument.createTextNode(text);
+          el.appendChild(textNode);
+        };
+        
+        // Apply text immediately
+        applyText();
+        
+        // Dispatch composition events (WhatsApp listens to these)
+        requestAnimationFrame(() => {
+          try {
+            el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+            
+            el.dispatchEvent(new InputEvent("beforeinput", {
+              bubbles: true,
+              cancelable: true,
+              inputType: "insertComposedText",
+              data: text
+            }));
+            
+            el.dispatchEvent(new InputEvent("input", {
+              bubbles: true,
+              cancelable: true,
+              inputType: "insertComposedText",
+              data: text
+            }));
+            
+            el.dispatchEvent(new CompositionEvent("compositionend", {
+              bubbles: true,
+              data: text
+            }));
+            
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+          } catch (e) {
+            // Event dispatch error, continue
+          }
+        });
+        
+        // Use MutationObserver to detect and fix React reversions
+        let observer;
+        const startWatching = () => {
+          observer = new MutationObserver(() => {
+            const currentText = el.textContent;
+            // If text changed or was cleared, reapply
+            if (currentText !== text) {
+              applyText();
+              
+              // Re-dispatch events after reapplication
+              setTimeout(() => {
+                try {
+                  el.dispatchEvent(new InputEvent("input", {
+                    bubbles: true,
+                    inputType: "insertComposedText",
+                    data: text
+                  }));
+                  el.dispatchEvent(new Event("change", { bubbles: true }));
+                } catch (e) {
+                  // Event error, continue
+                }
+              }, 10);
+            }
+          });
+          
+          observer.observe(el, {
+            characterData: true,
+            childList: true,
+            subtree: true
+          });
+          
+          // Stop watching after 3 seconds
+          const watchTimeout = setTimeout(() => {
+            if (observer) {
+              observer.disconnect();
+            }
+          }, 3000);
+          
+          // Store for cleanup if needed
+          el.__watchTimeout = watchTimeout;
+          el.__observer = observer;
+        };
+        
+        startWatching();
+      } else {
+        // For other sites (ChatGPT, etc.) - use text node
+        const textNode = el.ownerDocument.createTextNode(text);
+        el.appendChild(textNode);
       }
 
       // Dispatch events to notify React/frameworks of the change
       requestAnimationFrame(() => {
-        dispatchRichInputEvent(el, text);
-        dispatchInputEvents(el);
-        
-        // For WhatsApp, also dispatch more events
-        if (isWhatsApp) {
-          try {
-            el.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "a" }));
-            el.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "a" }));
-          } catch {
-            // ignore
-          }
+        if (!isWhatsApp) {
+          // For non-WhatsApp sites only
+          dispatchRichInputEvent(el, text);
+          dispatchInputEvents(el);
         }
-        
-        console.log("📢 Events dispatched");
+        // WhatsApp events already dispatched above
       });
 
       // Place caret at the end if the field is active
