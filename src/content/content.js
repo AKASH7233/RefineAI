@@ -64,12 +64,12 @@ import * as ui from "./ui.js";
   }
 
   function setError(msg) {
-    ui.setMessage(widgetHost, msg);
+    ui.setMessage(widgetHost, msg, true);
     messagePurpose = "error";
   }
 
   function clearMessage() {
-    ui.setMessage(widgetHost, "");
+    ui.setMessage(widgetHost, "", false);
     messagePurpose = null;
   }
 
@@ -112,9 +112,10 @@ import * as ui from "./ui.js";
       return;
     }
     console.log("✏️ Writing text to", currentTarget.tagName, "text:", text.substring(0, 50));
+    console.log("📋 Element before setText - innerHTML:", currentTarget.innerHTML.substring(0, 50), "innerText:", currentTarget.innerText?.substring(0, 50));
     lastAppliedText = text;
     setText(currentTarget, text);
-    console.log("✓ setText called. New value:", getText(currentTarget).substring(0, 50));
+    console.log("✓ setText called. New innerHTML:", currentTarget.innerHTML.substring(0, 50), "innerText:", currentTarget.innerText?.substring(0, 50));
   }
 
   function startFix() {
@@ -143,6 +144,8 @@ import * as ui from "./ui.js";
     }
     activeRequestId = newRequestId();
 
+    let lastReceivedText = "";
+
     activePort.onMessage.addListener((msg) => {
       console.log("📬 Content received message:", msg?.type, "requestId:", msg?.requestId, "activeRequestId:", activeRequestId);
       if (!msg || msg.requestId !== activeRequestId) {
@@ -151,13 +154,18 @@ import * as ui from "./ui.js";
       }
 
       if (msg.type === "UPDATE") {
-        console.log("📤 UPDATE message received, calling writeCurrentText");
-        writeCurrentText(msg.text || "");
+        console.log("📤 UPDATE message received, storing text:", msg.text?.substring(0, 40));
+        lastReceivedText = msg.text || "";
+        // Don't write yet - wait for DONE to write the final text in one go
         return;
       }
 
       if (msg.type === "DONE") {
-        console.log("✅ DONE message received");
+        console.log("✅ DONE message received, writing final text:", lastReceivedText.substring(0, 50));
+        // Write the final text once when stream is complete
+        if (lastReceivedText) {
+          writeCurrentText(lastReceivedText);
+        }
         setLoading(false);
         setUndoVisible(true);
         disconnectPort();
@@ -165,12 +173,14 @@ import * as ui from "./ui.js";
       }
 
       if (msg.type === "ERROR") {
+        console.log("❌ ERROR received:", msg.error);
         setLoading(false);
         const errText = msg.error || "Request failed";
 
         setUndoVisible(false);
         showTempError(errText, 3000);
         disconnectPort();
+        return;
       }
     });
 
