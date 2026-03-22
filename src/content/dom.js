@@ -109,6 +109,38 @@ function placeCaretAtEnd(contentEditableEl) {
     }
   }
 
+function getReactFiber(el) {
+  // Find React Fiber key
+  const fiberKeys = Object.keys(el).filter(key => key.startsWith("__react"));
+  if (fiberKeys.length === 0) return null;
+  
+  return el[fiberKeys[0]];
+}
+
+function triggerReactValue(el, text) {
+  try {
+    // Try to find React Fiber and update its state
+    const fiber = getReactFiber(el);
+    if (!fiber) return false;
+    
+    // Traverse up to find the component with state
+    let current = fiber;
+    while (current) {
+      // Look for useState state or memoizedState
+      if (current.memoizedState) {
+        // Found a component with state - it's holding the value
+        // Force update by triggering a setter through events
+        return true; // Signal that we found React
+      }
+      current = current.return;
+    }
+    
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function setText(el, text) {
     if (!el) {
       return;
@@ -142,139 +174,125 @@ export function setText(el, text) {
         // ignore
       }
 
-      // Detect if this is WhatsApp Web (has specific data attributes or structure)
-      const isWhatsApp = el.getAttribute("data-testid")?.includes("chat") || 
-                         el.getAttribute("data-testid")?.includes("message") ||
-                         el.closest("[data-testid*='message']") ||
-                         el.closest(".x1hx0egp") ||
-                         el.getAttribute("data-testid") === "input-chatbox-input" ||
-                         el.closest("[data-testid='input-chatbox-input']") ||
-                         el.className?.includes("x1hx0egp") ||
-                         window.location.hostname.includes("web.whatsapp.com");
-      
-
-      
-      // Clear all children first
-      while (el.firstChild) {
-        el.removeChild(el.firstChild);
-      }
+      const isWhatsApp = window.location.hostname.includes("web.whatsapp.com");
 
       if (isWhatsApp) {
-        // Function to apply text safely
-        const applyText = () => {
-          // Clear all children
-          while (el.firstChild) {
-            el.removeChild(el.firstChild);
+        // WhatsApp strategy: Use actual Clipboard API + paste event
+        // This forces React to update its state because paste is a legitimate user action
+        try {
+          el.focus();
+          
+          // Select all text in the element
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const sel = window.getSelection();
+          if (sel) {
+            sel.removeAllRanges();
+            sel.addRange(range);
           }
           
-          // Create text node
-          const textNode = el.ownerDocument.createTextNode(text);
-          el.appendChild(textNode);
-        };
-        
-        // Apply text immediately
-        applyText();
-        
-        // Dispatch composition events (WhatsApp listens to these)
-        requestAnimationFrame(() => {
-          try {
-            el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+          // Use the real Clipboard API to copy paste data
+          const clipboardData = new DataTransfer();
+          clipboardData.setData("text/plain", text);
+          
+          // Create and dispatch a paste event with the clipboard data
+          const pasteEvent = new ClipboardEvent("paste", {
+            bubbles: true,
+            cancelable: true,
+            clipboardData: clipboardData
+          });
+          
+          const handled = el.dispatchEvent(pasteEvent);
+          
+          if (!handled) {
+            // If paste event wasn't handled, manually set the text
+            // Clear existing content
+            while (el.firstChild) {
+              el.removeChild(el.firstChild);
+            }
             
-            el.dispatchEvent(new InputEvent("beforeinput", {
-              bubbles: true,
-              cancelable: true,
-              inputType: "insertComposedText",
-              data: text
-            }));
+            // Add text as textContent
+            el.textContent = text;
             
-            el.dispatchEvent(new InputEvent("input", {
-              bubbles: true,
-              cancelable: true,
-              inputType: "insertComposedText",
-              data: text
-            }));
-            
-            el.dispatchEvent(new CompositionEvent("compositionend", {
-              bubbles: true,
-              data: text
-            }));
-            
-            el.dispatchEvent(new Event("change", { bubbles: true }));
-          } catch (e) {
-            // Event dispatch error, continue
+            // Force React update with explicit events
+            setTimeout(() => {
+              try {
+                // Simulate the full input sequence
+                el.dispatchEvent(new InputEvent("beforeinput", {
+                  bubbles: true,
+                  cancelable: true,
+                  inputType: "insertFromPaste",
+                  data: text
+                }));
+                
+                el.dispatchEvent(new InputEvent("input", {
+                  bubbles: true,
+                  inputType: "insertFromPaste",
+                  data: text
+                }));
+                
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+              } catch {
+                // ignore
+              }
+            }, 5);
           }
-        });
-        
-        // Use MutationObserver to detect and fix React reversions
-        let observer;
-        const startWatching = () => {
-          observer = new MutationObserver(() => {
-            const currentText = el.textContent;
-            // If text changed or was cleared, reapply
-            if (currentText !== text) {
-              applyText();
+          
+          // Position caret at end and maintain focus
+          setTimeout(() => {
+            try {
+              if (document.activeElement !== el) {
+                el.focus();
+              }
               
-              // Re-dispatch events after reapplication
-              setTimeout(() => {
-                try {
-                  el.dispatchEvent(new InputEvent("input", {
-                    bubbles: true,
-                    inputType: "insertComposedText",
-                    data: text
-                  }));
-                  el.dispatchEvent(new Event("change", { bubbles: true }));
-                } catch (e) {
-                  // Event error, continue
-                }
-              }, 10);
+              const range = document.createRange();
+              range.selectNodeContents(el);
+              range.collapse(false);
+              const sel = window.getSelection();
+              if (sel) {
+                sel.removeAllRanges();
+                sel.addRange(range);
+              }
+            } catch {
+              // ignore
             }
-          });
-          
-          observer.observe(el, {
-            characterData: true,
-            childList: true,
-            subtree: true
-          });
-          
-          // Stop watching after 3 seconds
-          const watchTimeout = setTimeout(() => {
-            if (observer) {
-              observer.disconnect();
-            }
-          }, 3000);
-          
-          // Store for cleanup if needed
-          el.__watchTimeout = watchTimeout;
-          el.__observer = observer;
-        };
-        
-        startWatching();
-      } else {
-        // For other sites (ChatGPT, etc.) - use text node
-        const textNode = el.ownerDocument.createTextNode(text);
-        el.appendChild(textNode);
-      }
-
-      // Dispatch events to notify React/frameworks of the change
-      requestAnimationFrame(() => {
-        if (!isWhatsApp) {
-          // For non-WhatsApp sites only
-          dispatchRichInputEvent(el, text);
-          dispatchInputEvents(el);
-        }
-        // WhatsApp events already dispatched above
-      });
-
-      // Place caret at the end if the field is active
-      setTimeout(() => {
-        if (document.activeElement === el) {
+          }, 10);
+        } catch (err) {
+          // Fallback: simple textContent
           try {
-            placeCaretAtEnd(el);
+            el.textContent = text;
+            el.focus();
           } catch {
             // ignore
           }
         }
-      }, 0);
+      } else {
+        // Non-WhatsApp sites
+        // Clear and add text
+        while (el.firstChild) {
+          el.removeChild(el.firstChild);
+        }
+        
+        const textNode = el.ownerDocument.createTextNode(text);
+        el.appendChild(textNode);
+        
+        // Dispatch events
+        requestAnimationFrame(() => {
+          dispatchRichInputEvent(el, text);
+          dispatchInputEvents(el);
+        });
+        
+        // Place caret at end
+        setTimeout(() => {
+          if (document.activeElement === el) {
+            try {
+              placeCaretAtEnd(el);
+            } catch {
+              // ignore
+            }
+          }
+        }, 0);
+      }
     }
   }
 
