@@ -1,4 +1,4 @@
-# 🎨 AI Grammar Fix - Chrome Extension (MV3)
+# 🎨 RefineAI - Chrome Extension (MV3)
 
 A lightweight Chrome Extension that fixes grammar, improves clarity, and humanizes text across any website. Powered by Google's Gemini 2.5 Flash API with real-time streaming responses.
 
@@ -305,30 +305,16 @@ refineAi/
    ```bash
    npm run dev
    ```
-   Vite will rebuild on file changes (but won't auto-reload the extension)
+   Vite will rebuild on file changes automatically. The extension will also reload when `.env` file changes (through the envWatchPlugin).
 
 2. **Edit code** in `src/` and rebuild
 
 3. **Reload extension** in Chrome:
    - Go to `chrome://extensions`
-   - Find "AI Grammar Fix"
+   - Find "RefineAI"
    - Click the refresh icon
 
 4. **Test changes** on the website
-
-### Debug Logs
-
-**View content script logs:**
-- Open DevTools on the website (F12)
-- Go to **Console** tab
-- You'll see logs like `✏️ Writing text to DIV`
-
-**View service worker logs:**
-- Go to `chrome://extensions`
-- Find "AI Grammar Fix"
-- Click on **Service Worker** link (opens dedicated DevTools)
-- Go to **Console** tab
-- You'll see logs like `🌐 Calling Gemini API:`
 
 ### Testing Different Platforms
 
@@ -357,8 +343,8 @@ This generates:
 - `dist/*/**.js.map` (source maps for debugging)
 
 **File Sizes:**
-- `background.js`: ~2.5 KB (gzip: ~1.2 KB)
-- `content.js`: ~10 KB (gzip: ~4 KB)
+- `background.js`: ~4.4 KB (gzip: ~2.1 KB)
+- `content.js`: ~11.5 KB (gzip: ~4.2 KB)
 
 ### Deploying to Chrome Web Store
 
@@ -391,9 +377,10 @@ Each deployment to Chrome Web Store should increment this.
 - **Fix:** Extension reloaded. Reload the website tab.
 
 ### Text doesn't change on ChatGPT/WhatsApp
-- **Fix:** This was a known issue (resolved in recent build)
-- Ensure you're using the latest `dist/` build
-- Clear browser cache or use private window
+- **WhatsApp Web:** Uses MutationObserver to detect and fix React re-renders for reliable text replacement
+- **ChatGPT & others:** Uses React-compatible event dispatching for text updates
+- **Fix:** Ensure you're using the latest build
+- Clear browser cache or test in private window if issues persist
 
 ### API key errors
 - **Symptom:** "Gemini API key not set" message
@@ -408,9 +395,9 @@ Each deployment to Chrome Web Store should increment this.
 
 ### Text looks "AI-like"
 - **Symptom:** Output is too formal/robotic
-- **Fix:** Improved in latest build with humanized prompt
-- The prompt now asks Gemini to keep conversational tone
-- Rebuild: `npm run build`
+- **Fix:** Improved with humanized prompt that asks Gemini to keep conversational tone
+- The extension prioritizes natural, human-written output over perfect grammar
+- Rebuild extension if prompt was recently updated: `npm run build`
 
 ---
 
@@ -472,8 +459,8 @@ Have ideas to improve the extension?
 If you encounter issues:
 
 1. Check [Troubleshooting](#troubleshooting) section
-2. Look at service worker logs (`chrome://extensions` → "Service Worker")
-3. Ensure `.env` file is correct
-4. Try `npm run build` and reload extension
+2. Review the development section for build/reload instructions
+3. Ensure `.env` file is correctly set up
+4. Try clean rebuild: `npm run build && npm run dev`
 
 Happy fixing! 🎉

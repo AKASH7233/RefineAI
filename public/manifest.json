@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "AI Grammar Fix",
+  "name": "RefineAI",
   "version": "1.0.0",
   "description": "Floating button to fix grammar and clarity with Gemini (streaming).",
   "host_permissions": ["https://generativelanguage.googleapis.com/*"],
